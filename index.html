@@ -1,0 +1,164 @@
+<html>
+<head>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/4.8.1/pixi.min.js"></script>
+    <script src="vector2d.js"></script>
+    <script src="keyboard.js"></script>
+</head>
+
+<body>
+
+</body>
+
+<script>
+
+const WIDTH = 600;
+const HEIGHT = 600;
+let app = null;
+
+const leftArrow = keyboard(37);
+const rightArrow = keyboard(39);
+const spacebar = keyboard(32);
+
+class Body {
+
+    constructor(x, y, speedX, speedY, mass, image) {
+        this.position = new Vector(x, y);
+        // pixels per second
+        this.speed = new Vector(speedX, speedY);
+        this.mass = mass;
+        this.clip = false;
+        this.affected_by_gravity = true;
+
+        this.id = image;
+        this.image = PIXI.Sprite.fromImage(image);
+        this.image.anchor = {x: 0.5, y: 0.5};
+        app.stage.addChild(this.image)
+    }
+
+    calculateGravity(bodies) {
+        // do nothing is the body is not affected by gravity
+        if (!this.affected_by_gravity) { return; }
+
+        // iterate over all bodies to determine their gravitational pull
+        for (let i = 0; i < bodies.length; i++) {
+            let body = bodies[i];
+            // no need to calculate our own gravitational pull
+            if (body == this) { continue; }
+            // direction vector to the other body
+            let direction = body.position.clone().subtract(this.position);
+            // distance to the other body
+            let distance = direction.length();
+            // there is some weird behaviour when two objects get too close
+            // because the gravity gets too high so the object speeds up away in between frames
+            distance = Math.max(distance, 40);
+
+            // gravitation force is proportional to the object's mass and
+            // decreases with the square of distance
+            let pull = direction.normalize().multiply(body.mass).divide(distance * distance);
+            //
+            this.speed.add(pull);
+        }
+    }
+
+    updatePosition(delta) {
+        // how much would the speed affect our position in elapsed time
+        let deltaPos = this.speed.clone().multiply(delta);
+        // modify our position
+        this.position.add(deltaPos);
+
+        // clip coordinates
+        if (this.clip) {
+            if (this.position.x > WIDTH) { this.position.x = 0; }
+            if (this.position.y > HEIGHT) { this.position.y = 0; }
+            if (this.position.x < 0) { this.position.x = WIDTH; }
+            if (this.position.y < 0) { this.position.y = HEIGHT; }
+        }
+
+        this.image.position.x = this.position.x;
+        this.image.position.y = this.position.y;
+    }
+
+    update(delta, bodies) {
+        this.calculateGravity(bodies);
+        this.updatePosition(delta);
+    }
+}
+
+class Ship extends Body {
+
+    constructor(x, y, speedX, speedY, image) {
+        super(x, y, speedX, speedY, 0, image);
+        this.power = 100; // delta speed per second
+        this.direction = 0; // direction the ship is facing
+        this.clip = true;
+    }
+
+    updateDirection(delta) {
+        const rotation_speed = 8; // radians per second
+        if (leftArrow.isDown) {
+            this.direction -= rotation_speed * delta;
+        } else if (rightArrow.isDown) {
+            this.direction += rotation_speed * delta;
+        }
+
+        this.image.rotation = this.direction;
+    }
+
+    updateThrust(delta) {
+        if (spacebar.isDown) {
+            this.image.alpha = 0.5;
+            let thrustVector = new Vector(
+                Math.sin(this.direction),
+                -Math.cos(this.direction)
+            ).multiply(this.power).multiply(delta);
+            this.speed.add(thrustVector);
+        } else {
+            this.image.alpha = 1;
+        }
+    }
+
+    update(delta, bodies) {
+        this.calculateGravity(bodies);
+        this.updateDirection(delta);
+        this.updateThrust(delta);
+        this.updatePosition(delta);
+    }
+
+
+}
+
+
+const bodies = [];
+
+function gameLoop() {
+    let delta = this.elapsedMS / 1000;
+    for (let i = 0; i < bodies.length; i++) {
+        body = bodies[i];
+        body.update(delta, bodies);
+    }
+    // console.log(delta);
+}
+
+//Create a Pixi Application
+app = new PIXI.Application({width: WIDTH, height: HEIGHT});
+app.ticker.add(gameLoop, app.ticker);
+//Add the canvas that Pixi automatically created for you to the HTML document
+document.body.appendChild(app.view);
+
+const sun = new Body(WIDTH / 2, HEIGHT / 2, 0, 0, 50000, 'sun.png');
+sun.affected_by_gravity = false;
+
+const earth = new Body(WIDTH / 2, 50, -100, 0, 5000, 'earth.png');
+const moon = new Body(WIDTH / 2, 0, -105, 0, 10, 'moon.png')
+
+const ship = new Ship(50, 350, 100, 0, 'ship.png')
+
+bodies.push(sun);
+bodies.push(earth);
+bodies.push(moon);
+bodies.push(ship);
+
+</script>
+
+</html>
